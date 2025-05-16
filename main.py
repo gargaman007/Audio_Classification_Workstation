@@ -15,8 +15,8 @@ templates = Jinja2Templates(directory=".")
 # ACRCloud Configuration using SDK
 ACRCLOUD_CONFIG = {
     'host': 'identify-ap-southeast-1.acrcloud.com',
-    'access_key': 'c529996b7457352ca72e2ccb1fcbc4dd',
-    'access_secret': 'MQitmw327GTfkoLhCzk90Uwcf2dL0DGhUvQvQwS0',
+    'access_key': '',
+    'access_secret': '',
     'timeout': 1  # seconds
 }
 acr_recognizer = ACRCloudRecognizer(ACRCLOUD_CONFIG) 
