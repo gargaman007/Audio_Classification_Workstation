@@ -2,5 +2,9 @@ fastapi
 uvicorn
 python-multipart
 Jinja2
-git+https://github.com/acrcloud/acrcloud_sdk_python.git#egg=acrcloud_sdk_python
 requests
+tensorflow
+tensorflow-hub
+librosa
+numpy
+pydub

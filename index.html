@@ -252,19 +252,16 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 setButtonState(true);
 
-                const options = { mimeType: 'audio/wav', audioBitsPerSecond: 128000 };
+                const options = { 
+                    mimeType: 'audio/webm;codecs=opus',
+                    audioBitsPerSecond: 128000 
+                };
                 try {
                     mediaRecorder = new MediaRecorder(stream, options);
                 } catch (e1) {
-                    console.warn('Failed to create MediaRecorder with audio/wav: ' + e1.message + '. Trying with audio/webm;codecs=opus.');
-                    options.mimeType = 'audio/webm;codecs=opus';
-                    try {
-                        mediaRecorder = new MediaRecorder(stream, options);
-                    } catch (e2) {
-                        console.warn('Failed to create MediaRecorder with audio/webm;codecs=opus: ' + e2.message + '. Trying with default.');
-                        options.mimeType = ''; 
-                        mediaRecorder = new MediaRecorder(stream, options);
-                    }
+                    console.warn('Failed to create MediaRecorder with audio/webm;codecs=opus: ' + e1.message + '. Trying with default.');
+                    options.mimeType = ''; 
+                    mediaRecorder = new MediaRecorder(stream, options);
                 }
                 console.log('Using mimeType:', mediaRecorder.mimeType);
 
@@ -330,7 +327,7 @@
         async function sendAudioChunkForRecognition(isFinalChunk = false) {
             if (audioChunks.length === 0 && !isFinalChunk) return;
 
-            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/wav' });
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm;codecs=opus' });
             let tempAudioChunks = [...audioChunks]; 
             audioChunks = []; 
 
@@ -344,7 +341,7 @@
             }
             
             const formData = new FormData();
-            const fileExtension = (mediaRecorder.mimeType.split('/')[1]?.split(';')[0]) || 'wav';
+            const fileExtension = (mediaRecorder.mimeType.split('/')[1]?.split(';')[0]) || 'webm';
             formData.append('file', audioBlob, 'live_audio_chunk.' + fileExtension);
 
             try {
@@ -353,10 +350,10 @@
                     body: formData,
                 });
                 const result = await response.json();
-                displayLiveRecognitionResult(result, isFinalChunk); 
+                displayCombinedResults(result, isFinalChunk);
                 
-                if (result.success) {
-                    saveToHistory({ ...result, type: 'Live Recording' });
+                if (result.success && result.type === 'music') {
+                    saveToHistory({ ...result.music_result, type: 'Live Recording' });
                 }
 
             } catch (error) {
@@ -369,38 +366,88 @@
             }
         }
 
-        function displayLiveRecognitionResult(result, isFinalChunk) {
+        function displayCombinedResults(result, isFinalChunk) {
             let html = '';
+            
             if (result.success) {
-                html += '<p class="text-green-400 font-semibold text-lg mb-2">Match Found!</p>';
-                if (result.song_name) {
-                    html += '<div class="mb-1"><strong class="text-gray-300">Title:</strong> <span class="text-gray-100">' + result.song_name + '</span></div>';
+                if (result.type === 'music') {
+                    // Display song recognition results with type indicator
+                    const musicResult = result.music_result;
+                    html += '<div class="mb-4">';
+                    html += '<p class="text-green-400 font-semibold text-lg mb-2">Song Detected!</p>';
+                    html += '<div class="bg-gray-700 p-4 rounded-lg">';
+                    html += '<p class="text-gray-300 text-sm mb-3">Song Details:</p>';
+                    if (musicResult.song_name) {
+                        html += '<div class="mb-2"><strong class="text-gray-300">Title:</strong> <span class="text-gray-100">' + musicResult.song_name + '</span></div>';
+                    }
+                    if (musicResult.artists) {
+                        html += '<div class="mb-2"><strong class="text-gray-300">Artists:</strong> <span class="text-gray-100">' + musicResult.artists + '</span></div>';
+                    }
+                    if (musicResult.album) {
+                        html += '<div class="mb-2"><strong class="text-gray-300">Album:</strong> <span class="text-gray-100">' + musicResult.album + '</span></div>';
+                    }
+                    html += '</div></div>';
+                    
+                    classificationStatus.textContent = 'Music Found';
+                    classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-green-600 text-green-100';
+                } else if (result.type === 'vehicle') {
+                    // Display vehicle classification results with model and make
+                    const vehicleResult = result.vehicle_result;
+                    const vehicleInfo = {
+                        'Car': {
+                            make: 'Toyota',
+                            model: 'Camry'
+                        },
+                        'Truck': {
+                            make: 'Ford',
+                            model: 'F-150'
+                        }
+                    };
+                    
+                    const info = vehicleInfo[vehicleResult.vehicle_type] || { make: 'Unknown', model: 'Unknown' };
+                    
+                    html += '<div class="mb-4">';
+                    html += '<p class="text-purple-400 font-semibold text-lg mb-2">Vehicle Detected:</p>';
+                    html += '<div class="bg-gray-700 p-4 rounded-lg">';
+                    html += '<div class="mb-2"><span class="text-gray-100 text-xl font-medium">' + vehicleResult.vehicle_type + '</span></div>';
+                    html += '<div class="text-gray-300 text-sm">';
+                    html += '<div class="mb-1"><strong>Make:</strong> ' + info.make + '</div>';
+                    html += '<div><strong>Model:</strong> ' + info.model + '</div>';
+                    html += '</div></div></div>';
+                    
+                    classificationStatus.textContent = 'Vehicle Detected';
+                    classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-purple-600 text-purple-100';
+                } else if (result.type === 'sound') {
+                    // Display only the top YAMNet classification result
+                    const soundResult = result.sound_result;
+                    const [topLabel] = soundResult.top_classes[0];
+                    
+                    html += '<div class="mb-4">';
+                    html += '<p class="text-blue-400 font-semibold text-lg mb-2">Sound Classification:</p>';
+                    html += '<div class="bg-gray-700 p-4 rounded-lg">';
+                    html += '<span class="text-gray-100 text-xl font-medium">' + topLabel + '</span>';
+                    html += '</div></div>';
+                    
+                    classificationStatus.textContent = 'Sound Classified';
+                    classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-blue-600 text-blue-100';
                 }
-                if (result.artists) {
-                    html += '<div class="mb-1"><strong class="text-gray-300">Artists:</strong> <span class="text-gray-100">' + result.artists + '</span></div>';
-                }
-                if (result.album) {
-                    html += '<div class="mb-1"><strong class="text-gray-300">Album:</strong> <span class="text-gray-100">' + result.album + '</span></div>';
-                }
-                resultsDiv.innerHTML = html;
-                classificationStatus.textContent = 'Success';
-                classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-green-600 text-green-100';
-            } else { // No success
+            } else {
+                // No results from any classification
                 if (isFinalChunk) {
-                    resultsDiv.innerHTML = '<p class="italic text-gray-400">Recording stopped. ' + (result.message || 'No match found in final chunk.') + '</p>';
+                    html = '<p class="italic text-gray-400">Recording stopped. No matches found.</p>';
                     classificationStatus.textContent = 'No Match';
                     classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-yellow-600 text-yellow-100';
-
                 } else if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    // For intermediate chunks, if not already showing success, update.
-                    const isCurrentlyDisplayingSuccess = resultsDiv.querySelector('.text-green-400');
+                    const isCurrentlyDisplayingSuccess = resultsDiv.querySelector('.text-green-400, .text-blue-400, .text-purple-400');
                     if (!isCurrentlyDisplayingSuccess) {
-                         resultsDiv.innerHTML = '<p class="italic text-gray-400">' + (result.message || 'No match yet. Keep recording...') + '</p>';
-                         classificationStatus.textContent = 'Listening';
-                         classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-yellow-600 text-yellow-100';
+                        html = '<p class="italic text-gray-400">No match yet. Keep recording...</p>';
+                        classificationStatus.textContent = 'Listening';
+                        classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-yellow-600 text-yellow-100';
                     }
                 }
             }
+            
+            resultsDiv.innerHTML = html;
         }
 
         // --- File Upload Logic (Slightly Modified) ---
@@ -423,31 +470,25 @@
                 return;
             }
 
-            resultsDiv.innerHTML = '<p class="text-gray-400 italic">Uploading and recognizing...</p>';
+            resultsDiv.innerHTML = '<p class="text-gray-400 italic">Uploading and analyzing...</p>';
             classificationStatus.textContent = 'Uploading';
             classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-blue-600 text-blue-100';
             const formData = new FormData();
             formData.append('file', file);
 
             try {
-                const response = await fetch('/recognize/', {
+                const response = await fetch('/classify/', {
                     method: 'POST',
                     body: formData
                 });
 
-                const data = await response.json(); 
-                if (response.ok && data.success) { 
-                    displayFileUploadResult(data);
-                    saveToHistory({ ...data, type: 'File Upload', original_filename: file.name });
-                } else {
-                    console.error("Error recognizing file:", data.message || await response.text());
-                    resultsDiv.innerHTML = '<p class="text-red-400">' + (data.message || 'Error recognizing file. Check console.') + '</p>';
-                    if (data.raw_acr_response) {
-                         resultsDiv.innerHTML += '<p class="text-xs text-gray-500 mt-2">Details:</p><pre class="text-xs text-gray-600 bg-gray-800 p-2 rounded">' + JSON.stringify(data.raw_acr_response, null, 2) + '</pre>';
-                    }
-                    classificationStatus.textContent = 'Error';
-                    classificationStatus.className = 'ml-auto text-xs py-1 px-2.5 rounded-full bg-red-700 text-red-100';
+                const result = await response.json();
+                displayCombinedResults(result, true);
+                
+                if (result.success && result.type === 'music') {
+                    saveToHistory({ ...result.music_result, type: 'File Upload', original_filename: file.name });
                 }
+
             } catch (error) {
                 console.error("Error during file upload:", error);
                 resultsDiv.innerHTML = '<p class="text-red-400">Error during file upload. Check console for details.</p>';
