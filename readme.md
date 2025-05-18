@@ -6,6 +6,8 @@ https://www.gyan.dev/ffmpeg/builds/
 
 -- Keep it in the root folder such as
 
+    ├── main.py
+
     ├── ffmpeg-master-latest-win64-gpl/
     
     │   └── bin/
